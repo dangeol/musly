@@ -12,7 +12,6 @@
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
 #include <winsock2.h>
-typedef u_long uint32_t;
 typedef unsigned char uint8_t;
 #else
 #include <arpa/inet.h>
