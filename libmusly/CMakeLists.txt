@@ -51,6 +51,7 @@ add_library(libmusly
     gaussianstatistics.cpp
     mutualproximity.cpp
     lib.cpp
+    writewav.cpp
     ${LIBMUSLY_EXTERNAL})
 
 if(BUILD_STATIC)

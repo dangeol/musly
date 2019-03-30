@@ -28,6 +28,7 @@ extern "C" {
 #include "minilog.h"
 #include "resampler.h"
 #include "libav.h"
+#include "writewav.h"
 
 // We define some macros to be compatible to different libav versions
 // without spreading #if and #else all over the place.
@@ -125,6 +126,7 @@ libav::decodeto_22050hz_mono_float(
         float excerpt_length,
         float excerpt_start)
 {
+    float excerpt_start_backup = excerpt_start;
     MINILOG(logTRACE) << "Decoding: " << file << " started.";
 
     const int target_rate = 22050;
@@ -480,6 +482,14 @@ libav::decodeto_22050hz_mono_float(
         pcm.resize(decoded_pcm.size() - skip_samples);
         std::copy(decoded_pcm.begin() + skip_samples, decoded_pcm.end(), pcm.begin());
     }
+
+    // Save PCM to disk, for hearing and testing purposes only
+    std::string path = file+"_"+std::to_string(excerpt_start_backup)+".wav";
+    const char *cPath = path.c_str(); 
+    short BitsPersample = 16;
+    std::vector<float> *p_pcm = &pcm;
+    writewav w; 
+    w.writewavdata(cPath, pcm, pcm.size(), (int)target_rate, (short)channels/2, (short)BitsPersample);
 
     // cleanup
     if (buffer) {
