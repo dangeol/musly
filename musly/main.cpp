@@ -12,6 +12,7 @@
 
 
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -29,7 +30,31 @@
 
 musly_jukebox* mj = 0;
 
+int 
+init_cf(programoptions& po, collection_file& cf) { 
+    if (!cf.open("wb")) {
+        std::cerr << "Cannot create collection file: " << cf.get_file() << std::endl;
+        return -1;
+    }
 
+    std::cout << "Initialized music similarity method: " << mj->method_name
+        << std::endl;
+    std::cout << "~~~" << std::endl;
+    std::cout << musly_jukebox_aboutmethod(mj) << std::endl;
+    std::cout << "~~~" << std::endl;
+    std::cout << "Installed audio decoder: " << mj->decoder_name
+        << std::endl;
+    std::cout << "Initializing new collection: " <<
+    po.get_option_str("c") << std::endl;
+    std::cout << "Initialization result: "<< std::flush;
+    if (cf.write_header(mj->method_name)) {
+        std::cout << "OK." << std::endl;
+    } else {
+        std::cout << "failed." << std::endl;
+        return -1;
+    }
+    return 0;
+} 
 
 int
 read_collectionfile(
@@ -80,6 +105,7 @@ read_collectionfile(
     musly_track* mt = musly_track_alloc(mj);
 
     // read the collection file, and position cursor after the last
+
     // record
     std::cout << "Reading collection file: " << cf.get_file() << std::endl;
     int count = 0;
@@ -89,7 +115,7 @@ read_collectionfile(
         // 'list files' mode
         if (mode == 'l') {
             std::cout << "track-id: " << count << ", track-size: " << read
-                    << " bytes, track-origin: " << current_file << std::endl;
+                    << " bytes, track-origin: " << current_file << std::endl; 
         // 'dump tracks' mode
         } else if (mode == 'd') {
             std::cout << current_file << std::endl;
@@ -140,15 +166,25 @@ bool write_jukebox(std::string &filename, musly_jukebox* jukebox, int last_reini
 }
 
 void
-tracks_add(collection_file& cf, std::string directory_or_file, std::string extension) {
+tracks_add(collection_file& cf, std::string directory_or_file, std::string extension, int no_tracks) { 
     fileiterator fi(directory_or_file, extension);
     std::string afile;
+    int loops = 1; 
+    float excerpt_length = 30; 
+    float excerpt_start = -48; 
+    if (no_tracks < 0) { 
+        loops = 2; 
+        excerpt_length = 10; 
+        excerpt_start = 0; 
+    }
+
     if (!fi.get_nextfilename(afile)) {
         std::cout << "No files found while scanning: " <<
                 directory_or_file << std::endl;
     }
     else {
         int buffersize = musly_track_binsize(mj);
+//#region[rgba(236,240,241,0.15)]
 #ifdef _OPENMP
         // collect all file names in a vector first
         std::vector<std::string> files;
@@ -157,10 +193,12 @@ tracks_add(collection_file& cf, std::string directory_or_file, std::string exten
         } while (fi.get_nextfilename(afile));
         #pragma omp parallel if (files.size() > 1)
 #endif
+//#endregion
         {
         unsigned char* buffer =
                 new unsigned char[buffersize];
         musly_track* mt = musly_track_alloc(mj);
+//#region[rgba(236,240,241,0.15)]
 #ifdef _OPENMP
         // do a parallel for loop over the collected file names
         // use a dynamic schedule because computation may differ per file
@@ -168,54 +206,79 @@ tracks_add(collection_file& cf, std::string directory_or_file, std::string exten
         for (int i = 0; i < (int)files.size(); i++) {
             // set file to files[i] for the loop body
             std::string& file = files[i];
+//#endregion
+//#region[rgba(136,40,241,0.15)]
 #else
+
         // do a while loop over the fileiterator
         int i = 0;
         do {
             // set file to our existing afile for the loop body
             std::string& file = afile;
 #endif
+//#endregion
+            if (no_tracks < 0) { 
+                excerpt_start = 0; 
+            } 
             if (cf.contains_track(file)) {
+//#region[rgba(236,240,241,0.15)]
 #ifdef _OPENMP
                 #pragma omp critical
 #endif
+//#endregion
                 {
                 std::cout << "Skipping already analyzed [" << i+1 << "]: "
                         << limit_string(file, 60) << std::endl;
                 }  // pragma omp critical
                 continue;
             }
+
+            for (int i = 0; i < loops; i++) { 
+//#region[rgba(136,40,241,0.15)]
 #ifndef _OPENMP
-            std::cout << "Analyzing [" << i+1 << "]: "
+                std::cout << "Analyzing [" << i+1 << "]: "
                     << limit_string(file, 60) << std::flush;
-#endif
-            int ret = musly_track_analyze_audiofile(mj, file.c_str(), 30, -48, mt);
+#endif  
+//#endregion        
+                int ret = musly_track_analyze_audiofile(mj, file.c_str(), excerpt_length, excerpt_start, mt); 
+                if (no_tracks < 0) { 
+                    excerpt_start = 10000; 
+                } 
+//#region[rgba(236,240,241,0.15)]
 #ifdef _OPENMP
-            #pragma omp critical
-            {
-            std::cout << "Analyzing [" << i+1 << "]: "
-                    << limit_string(file, 60);
+                #pragma omp critical
+                {
+                std::cout << "Analyzing [" << i+1 << "]: "
+                        << limit_string(file, 60);
 #endif
-            if (ret == 0) {
-                int serialized_buffersize =
+//#endregion
+                if (ret == 0) {
+                    int serialized_buffersize =
                         musly_track_tobin(mj, mt, buffer);
-                if (serialized_buffersize == buffersize) {
-                    cf.append_track(file, buffer, buffersize);
-                    std::cout << " - [OK]" << std::endl;
+                    if (serialized_buffersize == buffersize) {
+                        cf.append_track(file, buffer, buffersize);
+                        std::cout << " - [OK]" << std::endl;
+                    } else {
+                        std::cout << " - [FAILED]." << std::endl;
+                    }
+
                 } else {
                     std::cout << " - [FAILED]." << std::endl;
                 }
-
-            } else {
-                std::cout << " - [FAILED]." << std::endl;
-            }
+//#region[rgba(236,240,241,0.15)]
 #ifdef _OPENMP
-            }  // pragma omp critical
-        }  // for loop
+                }  // pragma omp critical
+            } // for-loop
+        }  // for-loop
+//#endregion
+//#region[rgba(136,40,241,0.15)]
 #else
+
+            } // for-loop
             i++;
         } while (fi.get_nextfilename(afile));
 #endif
+//#endregion
         delete[] buffer;
         musly_track_free(mt);
         }  // pragma omp parallel
@@ -367,7 +430,7 @@ compute_similarity(
         musly_trackid seed,
         std::vector<musly_track*>& alltracks,
         std::vector<musly_trackid>& alltrackids)
-{
+{   
     int guess_len = std::max(k, (int)(alltracks.size()*0.1));
     std::vector<musly_trackid> guess_ids(guess_len);
     guess_len = musly_jukebox_guessneighbors(mj, seed,
@@ -410,6 +473,7 @@ compute_similarity(
         musly_trackid curid = ids->at(i);
 
         // skip self
+        // TO DO: also skip tracks that already have been seeds
         if (seed == curid) {
             continue;
         }
@@ -519,7 +583,11 @@ compute_playlist(
     std::ostringstream pl;
     for (int i = 0; i < k; i++) {
         int j = track_idx[i].first;
-        pl << tracks_files[j] << std::endl;
+        if (k > 1) { 
+            pl << tracks_files[j] << std::endl; 
+        } else {
+            pl << tracks_files[j]; 
+        } 
     }
 
     return pl.str();
@@ -639,7 +707,8 @@ main(int argc, char *argv[])
     // initialize the collection file.
     // note: the file is not opened/read at this point
     collection_file cf(po.get_option_str("c"));
-
+    collection_file cfs("collection-s.musly");
+    
     // set the debug level
     int debug_level = po.get_option_int("v");
     if (debug_level > 0) {
@@ -685,29 +754,15 @@ main(int argc, char *argv[])
         }
 
         // check if we can initialize a new collection file
-        if (!cf.open("wb")) {
-            std::cerr << "Cannot create collection file: " << cf.get_file() << std::endl;
-            return 1;
-        }
-
-        std::cout << "Initialized music similarity method: " << mj->method_name
-                << std::endl;
-        std::cout << "~~~" << std::endl;
-        std::cout << musly_jukebox_aboutmethod(mj) << std::endl;
-        std::cout << "~~~" << std::endl;
-        std::cout << "Installed audio decoder: " << mj->decoder_name
-                << std::endl;
-        std::cout << "Initializing new collection: " <<
-                po.get_option_str("c") << std::endl;
-        std::cout << "Initialization result: "<< std::flush;
-        if (cf.write_header(mj->method_name)) {
-            std::cout << "OK." << std::endl;
-        } else {
-            std::cout << "failed." << std::endl;
-        }
-
+        init_cf(po, cf); 
+        init_cf(po, cfs); 
+       
     // -a: add one or more songs to the collection
     } else if (po.get_action() == "a") {
+        int no_tracks = po.get_option_int("t");      
+        if (no_tracks < 0) {
+            cf = cfs; 
+        } 
 
         // read the collection file in quiet ('q') mode
         int track_count = read_collectionfile(cf, 'q');
@@ -719,7 +774,7 @@ main(int argc, char *argv[])
         std::cout << "Read " << track_count << " musly tracks." << std::endl;
 
         // search for new files, analyze and add them
-        tracks_add(cf, po.get_option_str("a"), po.get_option_str("x"));
+        tracks_add(cf, po.get_option_str("a"), po.get_option_str("x"), no_tracks); 
 
     // -l: list files in collection file
     } else if (po.get_action() == "l") {
@@ -741,11 +796,18 @@ main(int argc, char *argv[])
         // For everything else, we need a filled jukebox.
         // We will read the collection file to memory and either initialize a
         // jukebox and register all tracks, or load a jukebox state from disk.
+        int no_tracks = po.get_option_int("t"); 
+        if (no_tracks < 0) {
+            cf = cfs; 
+        } 
 
         // read collection file to memory
-        std::vector<musly_track*> tracks;
-        std::vector<std::string> tracks_files;
+        std::vector<musly_track*> tracks; //stored here
+        std::vector<std::string> tracks_files; //stored here
         int track_count = read_collectionfile(cf, 't', &tracks, &tracks_files);
+        //std::cout << "tracks_files[0]: " << tracks_files[0] << std::endl; 
+        //std::cout << "tracks_files[1]: " << tracks_files[1] << std::endl; 
+        //std::cout << "tracks_files[2]: " << tracks_files[2] << std::endl; 
         if (track_count < 0) {
             std::cerr << "Reading the collection failed." << std::endl;
             musly_jukebox_poweroff(mj);
@@ -884,32 +946,56 @@ main(int argc, char *argv[])
         // -p: compute and display a playlist for a single seed track
         } else if (po.get_action() == "p") {
             std::string seed_file = po.get_option_str("p");
+            int no_tracks = po.get_option_int("t"); 
+            int k = 1; 
+            if (no_tracks > 1) { 
+                std::cout << "Computing playlist for " << seed_file << std::endl;
+            } else if (no_tracks < -1) { 
+                std::cout << "Computing smooth playlist for " << seed_file << std::endl;
+            } 
+            for (int i = 0; i < std::abs(no_tracks); i++) {
+                std::vector<std::string>::iterator it = std::find(
+                        tracks_files.begin(), tracks_files.end(), seed_file);
+                if (it == tracks_files.end()) {
+                    std::cerr << "File not found in collection! Aborting." << std::endl;
+                    tracks_free(tracks);
+                    musly_jukebox_poweroff(mj);
+                    return -1;
+                }
 
-            std::vector<std::string>::iterator it = std::find(
-                    tracks_files.begin(), tracks_files.end(), seed_file);
-            if (it == tracks_files.end()) {
-                std::cerr << "File not found in collection! Aborting." << std::endl;
-                tracks_free(tracks);
-                musly_jukebox_poweroff(mj);
-                return -1;
-            }
-
-            // compute a single playlist
-            int k = po.get_option_int("k");
-            std::cout << "Computing the k=" << k << " most similar tracks to: "
+                // compute a single playlist
+                if (abs(no_tracks) == 1) { 
+                    k = po.get_option_int("k");
+                    std::cout << "Computing the k=" << k << " most similar tracks to: "
                     << seed_file << std::endl;
-            std::vector<musly_trackid> trackids(tracks.size());
-            for (int i = 0; i < (int)trackids.size(); i++) {
-                trackids[i] = i;
-            }
-            musly_trackid seed = std::distance(tracks_files.begin(), it);
-            std::string pl = compute_playlist(tracks, trackids, tracks_files,
-                    seed, k);
-            if (pl == "") {
-                std::cerr << "Failed to compute similar tracks for given file."
-                        << std::endl;
-            } else {
-                std::cout << pl;
+                } 
+                
+                std::vector<musly_trackid> trackids(tracks.size());
+                for (int i = 0; i < (int)trackids.size(); i++) {
+                    trackids[i] = i;
+                }
+                musly_trackid seed = std::distance(tracks_files.begin(), it);
+                if (no_tracks < 0) { 
+                    //increase seed index by one to compare the end of current seed with beginnings of other tracks
+                    seed++; 
+                } 
+
+                std::string pl = compute_playlist(tracks, trackids, tracks_files,
+                        seed, k);
+                
+                //erase tracks and track_files that just already served as seed, so that it will be skipped in playlist calculation
+                tracks.erase(tracks.begin() + seed);
+                musly_track* mti = tracks[seed];
+                    musly_track_free(mti);
+                tracks_files.erase(tracks_files.begin() + seed);
+                
+                if (pl == "") {
+                    std::cerr << "Failed to compute similar tracks for given file."
+                            << std::endl;
+                } else {
+                    std::cout << pl << std::endl;
+                    seed_file = pl;
+                }
             }
         }
 

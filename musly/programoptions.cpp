@@ -23,6 +23,7 @@ programoptions::programoptions(int argc, char *argv[],
         const std::vector<std::string>& methods) :
         default_collection("collection.musly"),
         default_k(5),
+        default_t(1),
         default_debuglevel(0),
         action(""),
         program_name(argv[0])
@@ -34,6 +35,9 @@ programoptions::programoptions(int argc, char *argv[],
     std::stringstream kstr;
     kstr << default_k;
     optionstr["k"] = kstr.str();
+    std::stringstream tstr;
+    tstr << default_t;
+    optionstr["t"] = tstr.str();
     optionstr["e"] = "-1";
     optionstr["f"] = "-1";
 
@@ -46,7 +50,7 @@ programoptions::programoptions(int argc, char *argv[],
     opterr = 0;
     while (1) {
 
-        int c = getopt(argc, argv, "v:ihc:Jj:a:x:Ee:f:Nn:k:ldm:s:p:");
+        int c = getopt(argc, argv, "v:ihc:Jj:a:x:t:Ee:f:Nn:k:ldm:s:p:");
         if (c == -1) {
             break;
         }
@@ -86,6 +90,7 @@ programoptions::programoptions(int argc, char *argv[],
 
         // parameters
         case 'v':
+        case 't': 
         case 'x':
         case 'c':
         case 'j':
@@ -177,6 +182,15 @@ cout << "  -k NUM       set number of similar songs per item when computing" << 
      << "               playlists ('-p'), sparse distance matrices ('-s')" << endl
      << "               or when evaluating the collection ('-e')." << endl
      << "               DEFAULT: " << default_k << endl;
+cout << "  -t NUM       when performing an analysis of tracks ('-a'), no option or" << endl
+     << "               a positive number will use the standard collection file." << endl
+     << "               A negative number (e.g. -t -1) will use a second" << endl
+     << "               collection file, dedicated for a 'smooth playlist' feature." << endl
+     << "               When using this option with '-p', the given positive number" << endl
+     << "               will set the number of tracks in a standard playlist and a" << endl
+     << "               negative number will set the number of tracks in a " << endl
+     << "               'smooth playlist'." << endl
+     << "               DEFAULT: " << default_t << endl;
 cout << " INITIALIZATION:" << endl;
 cout << "  -n MTH | -N  initialize the collection (set with '-c') using the" << endl
      << "               music similarity method MTH. Available methods:" << endl
